@@ -4,3 +4,12 @@ __pycache__/
 .venv/
 venv/
 .env
+#Virtual Environments & Python
+backend/venv/
+backend/.env
+backend/__pycache__/
+*.pyc
+
+#Node and Frontend
+frontend/node_modules/
+frontend/dist/

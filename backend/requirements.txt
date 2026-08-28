@@ -1,0 +1,7 @@
+streamlit
+streamlit-code-editor
+graphviz
+ply
+groq
+python-dotenv
+pandas

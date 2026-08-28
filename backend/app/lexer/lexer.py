@@ -156,7 +156,7 @@ def tokenize(source_code):
                 curr_type = curr["type"]
                 if curr_type == "SEMI":
                     break
-                elif curr_type in ("LBRACE", "RBRACE"):
+                elif curr_type in ("LBRACE", "RBRACE", "INT", "FLOAT", "BOOL"):
                     i -= 1
                     break
                 elif curr_type == "ASSIGN":
