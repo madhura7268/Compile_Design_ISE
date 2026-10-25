@@ -6,8 +6,7 @@ import streamlit.components.v1 as components
 import traceback
 
 # Adjust imports based on the backend folder structure
-from app.lexer.lexer import tokenize
-from app.parser.grammar import parse
+from app.semantic.pipeline import compile_source
 from tree_viz import generate_graphviz_tree
 from ai_diagnostic import get_ai_diagnostic
 
@@ -51,14 +50,10 @@ a + b;
 def set_sample(sample_name):
     st.session_state.code = SAMPLES[sample_name]
 
+
 def apply_fix(corrected_code):
     st.session_state.code = corrected_code
-    lex_result = tokenize(corrected_code)
-    parse_result = parse(corrected_code)
-    st.session_state.parse_results = {
-        "lex": lex_result,
-        "parse": parse_result
-    }
+    st.session_state.parse_results = compile_source(corrected_code)
 
 @st.dialog("Compiler Line-by-Line Visualizer", width="large")
 def visualizer_modal():
@@ -71,7 +66,12 @@ def visualizer_modal():
     
     res = st.session_state.get('parse_results', {})
     tokens = res.get("lex", {}).get("tokens", [])
-    symbols = res.get("lex", {}).get("symbol_table", [])
+    semantic_result = res.get("semantic")
+    symbols = (
+        semantic_result.get("symbol_table", [])
+        if semantic_result is not None
+        else res.get("lex", {}).get("symbol_table", [])
+    )
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
@@ -187,12 +187,7 @@ def main():
             st.rerun()
 
         if compile_clicked or visualize_clicked:
-            lex_result = tokenize(st.session_state.code)
-            parse_result = parse(st.session_state.code)
-            st.session_state.parse_results = {
-                "lex": lex_result,
-                "parse": parse_result
-            }
+            st.session_state.parse_results = compile_source(st.session_state.code)
             if visualize_clicked:
                 st.session_state.visualizer_step = 0
                 visualizer_modal()
@@ -237,7 +232,22 @@ def main():
                             
                         st.button("Apply AI Auto-Fix", on_click=apply_fix, args=(corrected,), type="primary")
             elif parse_res.get("success", False):
-                st.success("Compilation successful! Parse tree generated.")
+                semantic_result = res.get("semantic")
+                if semantic_result is not None and not semantic_result["success"]:
+                    st.error("Semantic analysis failed.")
+                    for err in semantic_result["errors"]:
+                        location = (
+                            f" at line {err['line']}"
+                            if err.get("line") is not None
+                            else ""
+                        )
+                        st.error(
+                            f"{err['code']}{location}: {err['message']}"
+                        )
+                else:
+                    st.success(
+                        "Compilation successful! Parse tree generated."
+                    )
 
     with col2:
         st.subheader("Analysis")

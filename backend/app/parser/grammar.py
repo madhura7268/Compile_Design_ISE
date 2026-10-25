@@ -53,7 +53,8 @@ def p_program(p):
     """
     p[0] = Node(
         "Program",
-        [p[1]]
+        [p[1]],
+        line=1,
     )
 
 
@@ -114,7 +115,9 @@ def p_block(p):
     """
     p[0] = Node(
         "Block",
-        [p[2]]
+        [p[2]],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
     )
 
 
@@ -135,17 +138,29 @@ def p_declaration_statement(p):
         p[0] = Node(
             f"VarDeclaration ({datatype})",
             [
-                identifier_node(identifier)
-            ]
+                identifier_node(
+                    identifier,
+                    line=p.lineno(2),
+                    column=find_column(p.lexer.lexdata, p.lexpos(2)),
+                )
+            ],
+            line=p.lineno(2),
+            column=find_column(p.lexer.lexdata, p.lexpos(2)),
         )
 
     else:
         p[0] = Node(
             f"VarDeclaration ({datatype})",
             [
-                identifier_node(identifier),
+                identifier_node(
+                    identifier,
+                    line=p.lineno(2),
+                    column=find_column(p.lexer.lexdata, p.lexpos(2)),
+                ),
                 p[4]
-            ]
+            ],
+            line=p.lineno(2),
+            column=find_column(p.lexer.lexdata, p.lexpos(2)),
         )
 
 
@@ -169,9 +184,15 @@ def p_assignment_statement(p):
     p[0] = Node(
         "Assignment",
         [
-            identifier_node(p[1]),
+            identifier_node(
+                p[1],
+                line=p.lineno(1),
+                column=find_column(p.lexer.lexdata, p.lexpos(1)),
+            ),
             p[3]
-        ]
+        ],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
     )
 
 
@@ -185,7 +206,9 @@ def p_expression_statement(p):
     """
     p[0] = Node(
         "ExpressionStatement",
-        [p[1]]
+        [p[1]],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
     )
 
 
@@ -203,19 +226,23 @@ def p_if_statement(p):
         p[0] = Node(
             "IfStatement",
             [
-                Node("Condition", [p[3]]),
+                Node("Condition", [p[3]], line=p.lineno(3)),
                 p[5]
-            ]
+            ],
+            line=p.lineno(1),
+            column=find_column(p.lexer.lexdata, p.lexpos(1)),
         )
 
     else:
         p[0] = Node(
             "IfStatement",
             [
-                Node("Condition", [p[3]]),
+                Node("Condition", [p[3]], line=p.lineno(3)),
                 Node("Then", [p[5]]),
                 Node("Else", [p[7]])
-            ]
+            ],
+            line=p.lineno(1),
+            column=find_column(p.lexer.lexdata, p.lexpos(1)),
         )
 
 
@@ -230,9 +257,11 @@ def p_while_statement(p):
     p[0] = Node(
         "WhileStatement",
         [
-            Node("Condition", [p[3]]),
+            Node("Condition", [p[3]], line=p.lineno(3)),
             p[5]
-        ]
+        ],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
     )
 
 
@@ -247,12 +276,18 @@ def p_return_statement(p):
     """
 
     if len(p) == 3:
-        p[0] = Node("ReturnStatement")
+        p[0] = Node(
+            "ReturnStatement",
+            line=p.lineno(1),
+            column=find_column(p.lexer.lexdata, p.lexpos(1)),
+        )
 
     else:
         p[0] = Node(
             "ReturnStatement",
-            [p[2]]
+            [p[2]],
+            line=p.lineno(1),
+            column=find_column(p.lexer.lexdata, p.lexpos(1)),
         )
 
 
@@ -266,7 +301,9 @@ def p_print_statement(p):
     """
     p[0] = Node(
         "PrintStatement",
-        [p[3]]
+        [p[3]],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
     )
 
 
@@ -308,7 +345,9 @@ def p_expression_binary(p):
     p[0] = operator_node(
         operator,
         p[1],
-        p[3]
+        p[3],
+        line=p.lineno(2),
+        column=find_column(p.lexer.lexdata, p.lexpos(2)),
     )
 
 
@@ -318,7 +357,9 @@ def p_expression_unary_minus(p):
     """
     p[0] = unary_operator_node(
         "-",
-        p[2]
+        p[2],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
     )
 
 
@@ -337,7 +378,11 @@ def p_expression_identifier(p):
     """
     expression : ID
     """
-    p[0] = identifier_node(p[1])
+    p[0] = identifier_node(
+        p[1],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
+    )
 
 
 # ============================================================
@@ -348,7 +393,11 @@ def p_expression_int(p):
     """
     expression : INT_NUM
     """
-    p[0] = literal_node(p[1])
+    p[0] = literal_node(
+        p[1],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
+    )
 
 
 # ============================================================
@@ -359,7 +408,11 @@ def p_expression_float(p):
     """
     expression : FLOAT_NUM
     """
-    p[0] = literal_node(p[1])
+    p[0] = literal_node(
+        p[1],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
+    )
 
 
 # ============================================================
@@ -370,7 +423,11 @@ def p_expression_string(p):
     """
     expression : STRING_LITERAL
     """
-    p[0] = literal_node(p[1])
+    p[0] = literal_node(
+        p[1],
+        line=p.lineno(1),
+        column=find_column(p.lexer.lexdata, p.lexpos(1)),
+    )
 
 
 # ============================================================
@@ -502,16 +559,12 @@ def _create_lexer(source_code):
 # PUBLIC PARSE FUNCTION
 # ============================================================
 
-def parse(source_code):
+def parse_with_ast(source_code):
     """
-    Parse ToyLang source code.
+    Parse ToyLang source code and return the internal tree for compiler phases.
 
     Returns:
-        {
-            "success": True/False,
-            "parse_tree": {...},
-            "error": {...}
-        }
+        (parser_result, tree), where tree is None after a failed parse.
     """
 
     global _last_parser_error
@@ -519,14 +572,14 @@ def parse(source_code):
     _last_parser_error = None
 
     if not isinstance(source_code, str):
-        return {
+        return ({
             "success": False,
             "parse_tree": None,
             "error": {
                 "error_type": "InputError",
                 "message": "Source code must be a string."
             }
-        }
+        }, None)
 
     lexer = _create_lexer(source_code)
 
@@ -538,14 +591,14 @@ def parse(source_code):
         )
 
     except Exception as exc:
-        return {
+        return ({
             "success": False,
             "parse_tree": None,
             "error": {
                 "error_type": "ParserError",
                 "message": str(exc)
             }
-        }
+        }, None)
 
     # --------------------------------------------------------
     # Check lexical errors generated by Member 1's lexer.
@@ -560,7 +613,7 @@ def parse(source_code):
     if lexical_errors:
         first_error = lexical_errors[0]
 
-        return {
+        return ({
             "success": False,
             "parse_tree": None,
             "error": {
@@ -570,35 +623,41 @@ def parse(source_code):
                 "unexpected_token": first_error.get("value"),
                 "message": first_error.get("message"),
             }
-        }
+        }, None)
 
     # --------------------------------------------------------
     # Parser error.
     # --------------------------------------------------------
 
     if _last_parser_error is not None:
-        return {
+        return ({
             "success": False,
             "parse_tree": None,
             "error": _last_parser_error
-        }
+        }, None)
 
     # --------------------------------------------------------
     # Successful parse.
     # --------------------------------------------------------
 
     if tree is None:
-        return {
+        return ({
             "success": False,
             "parse_tree": None,
             "error": {
                 "error_type": "SyntaxError",
                 "message": "Unable to generate parse tree."
             }
-        }
+        }, None)
 
-    return {
+    return ({
         "success": True,
         "parse_tree": tree.to_d3_json(),
         "error": None
-    }
+    }, tree)
+
+
+def parse(source_code):
+    """Parse ToyLang source code and return the public D3-compatible result."""
+    result, _ = parse_with_ast(source_code)
+    return result
