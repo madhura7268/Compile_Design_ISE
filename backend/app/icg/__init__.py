@@ -18,6 +18,8 @@ from .ir_structures import (
     TempAllocator,
     LabelGenerator,
 )
+from .cfg import build_cfg_from_instructions
+from .icg import IntermediateCodeGenerator, generate_icg
 
 __all__ = [
     "Quadruple",
@@ -29,4 +31,7 @@ __all__ = [
     "ControlFlowGraph",
     "TempAllocator",
     "LabelGenerator",
+    "build_cfg_from_instructions",
+    "IntermediateCodeGenerator",
+    "generate_icg",
 ]
