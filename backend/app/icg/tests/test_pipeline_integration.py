@@ -59,3 +59,27 @@ def test_pipeline_control_flow():
     assert res["semantic"]["success"] is True
     assert res["icg"]["success"] is True
     assert len(res["icg"]["cfg"]["blocks"]) >= 3
+
+
+def test_graphviz_cfg_generation():
+    from cfg_viz import generate_graphviz_cfg
+    code = """
+    int x = 5;
+    if (x > 0) {
+        x = x + 1;
+    } else {
+        x = x - 1;
+    }
+    """
+    res = compile_source(code)
+    assert res["icg"]["success"] is True
+    dot = generate_graphviz_cfg(res["icg"]["cfg"])
+    assert dot is not None
+    source = dot.source
+    # Verify blocks and edges are present in Graphviz source
+    assert "B0" in source
+    assert "ENTRY" in source
+    assert "EXIT" in source
+    assert "branch-true" in source or "true" in source
+    assert "branch-false" in source or "false" in source
+
