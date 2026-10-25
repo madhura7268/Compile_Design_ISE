@@ -9,6 +9,7 @@ import traceback
 from app.semantic.pipeline import compile_source
 from tree_viz import generate_graphviz_tree
 from ai_diagnostic import get_ai_diagnostic
+from icg_viz import get_standalone_visualizer_html
 
 def render_dataframe(df):
     try:
@@ -120,6 +121,12 @@ def visualizer_modal():
         else:
             st.info("Symbol table is empty at this step.")
 
+@st.dialog("Phase 4: Intermediate Code Generator Visualizer", width="large")
+def icg_visualizer_modal():
+    code = st.session_state.get("code", "")
+    html_content = get_standalone_visualizer_html(code)
+    components.html(html_content, height=800, scrolling=True)
+
 def main():
     st.set_page_config(page_title="Smart Syntax & Grammar Debugger", layout="wide")
     
@@ -172,12 +179,14 @@ def main():
         )
         st.session_state.code = code_input
 
-        col_btn1, col_btn2, col_btn3 = st.columns(3)
+        col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
         with col_btn1:
             compile_clicked = st.button("Compile", use_container_width=True, type="primary")
         with col_btn2:
-            visualize_clicked = st.button("Visualize Pipeline", use_container_width=True)
+            visualize_clicked = st.button("Pipeline Stepper", use_container_width=True)
         with col_btn3:
+            icg_clicked = st.button("Phase 4 Stepper", use_container_width=True)
+        with col_btn4:
             reset_clicked = st.button("Reset", use_container_width=True)
             
         if reset_clicked:
@@ -186,11 +195,13 @@ def main():
                 del st.session_state['parse_results']
             st.rerun()
 
-        if compile_clicked or visualize_clicked:
+        if compile_clicked or visualize_clicked or icg_clicked:
             st.session_state.parse_results = compile_source(st.session_state.code)
             if visualize_clicked:
                 st.session_state.visualizer_step = 0
                 visualizer_modal()
+            elif icg_clicked:
+                icg_visualizer_modal()
 
         # Handle Diagnostics & Errors
         if 'parse_results' in st.session_state:
@@ -251,7 +262,7 @@ def main():
 
     with col2:
         st.subheader("Analysis")
-        tab1, tab2, tab3 = st.tabs(["Parse Tree", "Token Stream", "Symbol Table"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Parse Tree", "Token Stream", "Symbol Table", "Intermediate Code (ICG)"])
         
         if 'parse_results' in st.session_state:
             res = st.session_state.parse_results
@@ -280,6 +291,66 @@ def main():
                     render_dataframe(df_symbols)
                 else:
                     st.info("Symbol table is empty.")
+
+            with tab4:
+                icg_res = res.get("icg")
+                if icg_res and icg_res.get("success", False):
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("3AC Instructions", len(icg_res.get("instructions", [])))
+                    m2.metric("Temporaries", icg_res.get("temp_count", 0))
+                    m3.metric("Labels", icg_res.get("label_count", 0))
+                    m4.metric("Basic Blocks", len(icg_res.get("cfg", {}).get("blocks", {})))
+
+                    if st.button("🚀 Open Full Interactive Visualizer (Stepper & SVG CFG)", use_container_width=True, type="secondary"):
+                        icg_visualizer_modal()
+
+                    icg_sub1, icg_sub2, icg_sub3, icg_sub4 = st.tabs(["⚡ 3AC Code", "📋 Quadruples", "🔢 Triples", "🕸️ Control Flow Graph"])
+
+                    with icg_sub1:
+                        tac_lines = icg_res.get("three_address_code", [])
+                        tac_str = "\n".join(f"{i:2d}: {line}" for i, line in enumerate(tac_lines))
+                        st.code(tac_str, language="c")
+
+                    with icg_sub2:
+                        quads = icg_res.get("quadruples", [])
+                        if quads:
+                            df_quads = pd.DataFrame(quads)[["index", "op", "arg1", "arg2", "result"]]
+                            df_quads.columns = ["#", "Operator", "Arg 1", "Arg 2", "Result"]
+                            render_dataframe(df_quads)
+                        else:
+                            st.info("No quadruples generated.")
+
+                    with icg_sub3:
+                        triples = icg_res.get("triples", [])
+                        if triples:
+                            df_triples = pd.DataFrame(triples)[["index", "op", "arg1", "arg2"]]
+                            df_triples.columns = ["(i)", "Operator", "Arg 1", "Arg 2"]
+                            render_dataframe(df_triples)
+                        else:
+                            st.info("No triples generated.")
+
+                    with icg_sub4:
+                        cfg_data = icg_res.get("cfg", {})
+                        blocks = cfg_data.get("blocks", {})
+                        edges = cfg_data.get("edges", [])
+                        
+                        st.markdown(f"**Decomposed {len(blocks)} Basic Blocks:**")
+                        for bid, bdata in blocks.items():
+                            leader_idx = bdata.get("leader_index")
+                            leader_str = f" [Leader #{leader_idx}]" if leader_idx is not None else ""
+                            with st.expander(f"Basic Block {bid}{leader_str} (Predecessors: {bdata.get('predecessors', [])} | Successors: {bdata.get('successors', [])})", expanded=True):
+                                for code_line in bdata.get("code_lines", []):
+                                    st.code(code_line, language="c")
+
+                        if edges:
+                            st.markdown("**Directed CFG Edges:**")
+                            df_edges = pd.DataFrame(edges)
+                            render_dataframe(df_edges)
+
+                elif icg_res and not icg_res.get("success", False):
+                    st.error(f"ICG Generation failed: {icg_res.get('error')}")
+                else:
+                    st.info("Intermediate code will be generated once syntax and semantic analysis succeed.")
         else:
             with tab1:
                 st.info("Click 'Compile & Parse' to generate the parse tree.")
@@ -287,6 +358,8 @@ def main():
                 st.info("Click 'Compile & Parse' to generate the token stream.")
             with tab3:
                 st.info("Click 'Compile & Parse' to generate the symbol table.")
+            with tab4:
+                st.info("Click 'Compile & Parse' to generate intermediate code.")
 
 if __name__ == "__main__":
     main()
