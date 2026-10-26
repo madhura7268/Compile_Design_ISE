@@ -67,7 +67,6 @@ int d = a + b * c - (a + b);
 def main():
     st.set_page_config(
         page_title="Phase 4: Intermediate Code Generation (ICG)",
-        page_icon="⚡",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -109,11 +108,11 @@ def main():
     # Sidebar
     # -------------------------------------------------------------------------
     with st.sidebar:
-        st.title("⚡ Phase 4: ICG")
+        st.title("Phase 4: ICG")
         st.caption("Intermediate Code Generation & CFG Visualizer")
         st.markdown("---")
 
-        st.subheader("📁 Test Cases")
+        st.subheader("Test Cases")
         selected_sample = st.selectbox(
             "Choose Sample Program:",
             list(SAMPLES.keys()),
@@ -127,7 +126,7 @@ def main():
             st.rerun()
 
         st.markdown("---")
-        st.subheader("💡 Compiler Concepts")
+        st.subheader("Compiler Concepts")
         st.markdown("""
         - **3AC:** Max 3 addresses per op (`t0 = b * c`)
         - **Quadruples:** `(op, arg1, arg2, result)`
@@ -150,7 +149,7 @@ def main():
         st.markdown("Interactive Syntax-Directed Translation, Three-Address Code, Quadruples, Triples, and Control Flow Graphs.")
     with col_head2:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Reset Editor", use_container_width=True):
+        if st.button("Reset Editor", use_container_width=True):
             st.session_state.icg_code = SAMPLES[st.session_state.icg_sample_name]
             st.session_state.icg_step_idx = 0
             st.rerun()
@@ -179,18 +178,18 @@ def main():
     # Syntax / Semantic error handling
     if not parse_res.get("success", False):
         err = parse_res.get("error", {})
-        st.error(f"❌ Syntax Error at Line {err.get('line', '?')}: {err.get('message', 'Syntax error')}")
+        st.error(f"Syntax Error at Line {err.get('line', '?')}: {err.get('message', 'Syntax error')}")
         return
 
     if semantic_res is not None and not semantic_res.get("success", True):
-        st.error("❌ Semantic Analysis Failed:")
+        st.error("Semantic Analysis Failed:")
         for err in semantic_res.get("errors", []):
             st.error(f"&bull; {err.get('code')}: {err.get('message')}")
         return
 
     if not icg_res or not icg_res.get("success", False):
         err_msg = icg_res.get("error") if icg_res else "Intermediate code generation failed."
-        st.error(f"❌ ICG Error: {err_msg}")
+        st.error(f"ICG Error: {err_msg}")
         return
 
     # -------------------------------------------------------------------------
@@ -215,7 +214,7 @@ def main():
     # -------------------------------------------------------------------------
     # Interactive SDD Execution Stepper
     # -------------------------------------------------------------------------
-    st.subheader("🔍 Step-by-Step SDD Traversal Stepper")
+    st.subheader("Step-by-Step SDD Traversal Stepper")
 
     total_steps = len(steps)
     if total_steps > 0:
@@ -228,12 +227,12 @@ def main():
         # Step controls
         col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4 = st.columns([1, 1, 3, 1])
         with col_ctrl1:
-            if st.button("⏮ Previous", disabled=(curr_step_idx <= 0), use_container_width=True, key="step_prev"):
+            if st.button("Previous", disabled=(curr_step_idx <= 0), use_container_width=True, key="step_prev"):
                 st.session_state.icg_step_idx -= 1
                 st.rerun()
 
         with col_ctrl2:
-            if st.button("Next ⏭", disabled=(curr_step_idx >= total_steps - 1), use_container_width=True, key="step_next"):
+            if st.button("Next", disabled=(curr_step_idx >= total_steps - 1), use_container_width=True, key="step_next"):
                 st.session_state.icg_step_idx += 1
                 st.rerun()
 
@@ -256,7 +255,7 @@ def main():
         # Step Callout Card
         node_name = current_step.get("node_name", "AST Node")
         action_text = current_step.get("action", "")
-        st.info(f"📍 **AST Node: [{node_name}]** &mdash; {action_text}")
+        st.info(f"**AST Node: [{node_name}]** &mdash; {action_text}")
 
         # Live State Badges
         col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
@@ -292,12 +291,12 @@ def main():
     # Comprehensive IR & CFG Representations Tabs
     # -------------------------------------------------------------------------
     tab_cfg, tab_3ac, tab_quads, tab_triples, tab_blocks, tab_ast = st.tabs([
-        "🕸️ Control Flow Graph (CFG)",
-        "⚡ Three-Address Code (3AC)",
-        "📋 Quadruples Table",
-        "🔢 Triples Table",
-        "🧱 Basic Blocks Breakdown",
-        "🌳 Abstract Syntax Tree (AST)"
+        "Control Flow Graph (CFG)",
+        "Three-Address Code (3AC)",
+        "Quadruples Table",
+        "Triples Table",
+        "Basic Blocks Breakdown",
+        "Abstract Syntax Tree (AST)"
     ])
 
     # -------------------------------------------------------------------------
@@ -333,7 +332,7 @@ def main():
                 safe_code = code_text.replace("<", "&lt;").replace(">", "&gt;")
 
                 if active_inst_idx is not None and idx == active_inst_idx:
-                    code_html += f"<span style='background-color: rgba(99, 102, 241, 0.45); border-left: 4px solid #6366f1; display: block; color: #ffffff; padding-left: 8px;'>{idx:2d}: {leader_tag}{safe_code}  ⬅ ACTIVE</span>"
+                    code_html += f"<span style='background-color: rgba(99, 102, 241, 0.45); border-left: 4px solid #6366f1; display: block; color: #ffffff; padding-left: 8px;'>{idx:2d}: {leader_tag}{safe_code}  <- ACTIVE</span>"
                 elif active_inst_idx is not None and idx < active_inst_idx:
                     code_html += f"<span style='color: #cdd6f4; display: block; padding-left: 8px;'>{idx:2d}: {leader_tag}{safe_code}</span>"
                 else:
@@ -342,7 +341,7 @@ def main():
             st.markdown(code_html, unsafe_allow_html=True)
 
         with col_3ac_info:
-            st.markdown("##### 📌 Legend")
+            st.markdown("##### Legend")
             st.markdown("""
             - `[LEADER]`: Start of a basic block.
             - `t0, t1...`: Compiler-generated temporary registers.
@@ -352,7 +351,7 @@ def main():
             """)
             raw_tac = "\n".join(f"{i:2d}: {inst.get('code')}" for i, inst in enumerate(instructions))
             st.download_button(
-                "📥 Download 3AC (.txt)",
+                "Download 3AC (.txt)",
                 data=raw_tac,
                 file_name="intermediate_code_3ac.txt",
                 mime="text/plain",

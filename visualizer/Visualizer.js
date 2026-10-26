@@ -200,7 +200,7 @@ export class Visualizer {
     play() {
         if (!this.currentResult) return;
         this.isPlaying = true;
-        this.btnPlay.innerHTML = "⏸ Pause";
+        this.btnPlay.innerHTML = "Pause";
         this.btnPlay.classList.add("playing");
 
         this.playTimer = setInterval(() => {
@@ -218,7 +218,7 @@ export class Visualizer {
             clearInterval(this.playTimer);
             this.playTimer = null;
         }
-        this.btnPlay.innerHTML = "▶ Play";
+        this.btnPlay.innerHTML = "Play";
         this.btnPlay.classList.remove("playing");
     }
 
@@ -586,7 +586,7 @@ export class Visualizer {
 
             let instructionsHtml = "";
             b.instructions.forEach(inst => {
-                const isLeader = inst.isLeader ? `<span class="mini-leader">★</span>` : "";
+                const isLeader = inst.isLeader ? `<span class="mini-leader">*</span>` : "";
                 instructionsHtml += `<div class="block-code-line">${isLeader} ${inst.formatCode()}</div>`;
             });
 

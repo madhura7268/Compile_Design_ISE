@@ -121,7 +121,7 @@ def visualizer_modal():
         else:
             st.info("Symbol table is empty at this step.")
 
-@st.dialog("Phase 4: Intermediate Code Generation Stepper", width="large")
+@st.dialog("Phase 4: Intermediate Code Generation Visualizer", width="large")
 def icg_stepper_modal():
     res = st.session_state.get('parse_results', {})
     icg_res = res.get("icg")
@@ -141,16 +141,39 @@ def icg_stepper_modal():
     # Ensure step is within valid range
     if st.session_state.icg_step >= total_steps:
         st.session_state.icg_step = total_steps - 1
-
-    curr_idx = st.session_state.icg_step
-    step_data = steps[curr_idx]
+    if st.session_state.icg_step < 0:
+        st.session_state.icg_step = 0
 
     # Controls Row
     col_prev, col_status, col_next = st.columns([1, 2, 1])
     with col_prev:
-        if st.button("⬅ Previous", disabled=(curr_idx <= 0), use_container_width=True, key="icg_btn_prev"):
-            st.session_state.icg_step -= 1
-            st.rerun()
+        if st.button("Previous", disabled=(st.session_state.icg_step <= 0), use_container_width=True, key="icg_btn_prev"):
+            st.session_state.icg_step = max(0, st.session_state.icg_step - 1)
+            st.session_state.icg_slider_val = st.session_state.icg_step
+
+    with col_next:
+        if st.button("Next", disabled=(st.session_state.icg_step >= total_steps - 1), use_container_width=True, key="icg_btn_next"):
+            st.session_state.icg_step = min(total_steps - 1, st.session_state.icg_step + 1)
+            st.session_state.icg_slider_val = st.session_state.icg_step
+
+    if "icg_slider_val" not in st.session_state or st.session_state.icg_slider_val != st.session_state.icg_step:
+        st.session_state.icg_slider_val = st.session_state.icg_step
+
+    def on_slider_change():
+        st.session_state.icg_step = st.session_state.icg_slider_val
+
+    if total_steps > 1:
+        st.slider(
+            "Step Timeline Slider",
+            min_value=0,
+            max_value=total_steps - 1,
+            key="icg_slider_val",
+            on_change=on_slider_change,
+            label_visibility="collapsed"
+        )
+
+    curr_idx = st.session_state.icg_step
+    step_data = steps[curr_idx]
 
     with col_status:
         st.markdown(
@@ -159,17 +182,6 @@ def icg_stepper_modal():
             f"</div>",
             unsafe_allow_html=True
         )
-
-    with col_next:
-        if st.button("Next ➡", disabled=(curr_idx >= total_steps - 1), use_container_width=True, key="icg_btn_next"):
-            st.session_state.icg_step += 1
-            st.rerun()
-
-    # Timeline scrubber slider
-    new_step = st.slider("Step Timeline Slider", 0, total_steps - 1, curr_idx, label_visibility="collapsed")
-    if new_step != curr_idx:
-        st.session_state.icg_step = new_step
-        st.rerun()
 
     # Action callout
     st.info(f"**AST Node: [{step_data['node_name']}]** &bull; {step_data['action']}")
@@ -222,23 +234,54 @@ def icg_stepper_modal():
             render_dataframe(df_t)
 
     with col_right:
-        st.markdown("#### Intermediate Code (3AC)")
-        insts = icg_res.get("instructions", [])
-        active_idx = step_data.get("instruction_index")
+        vtab1, vtab2, vtab3, vtab4 = st.tabs(["3AC Traversal", "Control Flow Graph", "Quadruples", "Triples"])
 
-        code_html = "<pre style='background-color: #1e1e2e; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto;'>"
-        for inst in insts:
-            idx = inst.get("index", 0)
-            code_text = inst.get("code", "")
-            leader = "[LEADER] " if inst.get("is_leader") else "         "
-            if active_idx is not None and idx == active_idx:
-                code_html += f"<span style='background-color: rgba(99, 102, 241, 0.4); border-left: 3px solid #6366f1; display: block; color: #fff; padding-left: 6px;'>{idx:2d}: {leader}{code_text}  ⬅ active</span>"
-            elif active_idx is not None and idx < active_idx:
-                code_html += f"<span style='color: #cdd6f4; display: block; padding-left: 6px;'>{idx:2d}: {leader}{code_text}</span>"
+        with vtab1:
+            st.markdown("#### Intermediate Code (3AC)")
+            insts = icg_res.get("instructions", [])
+            active_idx = step_data.get("instruction_index")
+
+            code_html = "<pre style='background-color: #1e1e2e; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto;'>"
+            for inst in insts:
+                idx = inst.get("index", 0)
+                code_text = inst.get("code", "")
+                leader = "[LEADER] " if inst.get("is_leader") else "         "
+                if active_idx is not None and idx == active_idx:
+                    code_html += f"<span style='background-color: rgba(99, 102, 241, 0.4); border-left: 3px solid #6366f1; display: block; color: #fff; padding-left: 6px;'>{idx:2d}: {leader}{code_text}  <- active</span>"
+                elif active_idx is not None and idx < active_idx:
+                    code_html += f"<span style='color: #cdd6f4; display: block; padding-left: 6px;'>{idx:2d}: {leader}{code_text}</span>"
+                else:
+                    code_html += f"<span style='color: #585b70; display: block; padding-left: 6px;'>{idx:2d}: {leader}{code_text}</span>"
+            code_html += "</pre>"
+            st.markdown(code_html, unsafe_allow_html=True)
+
+        with vtab2:
+            cfg_data = icg_res.get("cfg", {})
+            if cfg_data and cfg_data.get("blocks"):
+                st.markdown("#### Control Flow Graph")
+                st.caption("Emerald = True branch, Red = False branch, Purple = Goto, Cyan = Fall-through")
+                dot_cfg = generate_graphviz_cfg(cfg_data)
+                st.graphviz_chart(dot_cfg, use_container_width=True)
             else:
-                code_html += f"<span style='color: #585b70; display: block; padding-left: 6px;'>{idx:2d}: {leader}{code_text}</span>"
-        code_html += "</pre>"
-        st.markdown(code_html, unsafe_allow_html=True)
+                st.info("No CFG data available.")
+
+        with vtab3:
+            quads = icg_res.get("quadruples", [])
+            if quads:
+                df_quads = pd.DataFrame(quads)[["index", "op", "arg1", "arg2", "result"]]
+                df_quads.columns = ["#", "Operator", "Arg 1", "Arg 2", "Result"]
+                render_dataframe(df_quads)
+            else:
+                st.info("No quadruples generated.")
+
+        with vtab4:
+            triples = icg_res.get("triples", [])
+            if triples:
+                df_triples = pd.DataFrame(triples)[["index", "op", "arg1", "arg2"]]
+                df_triples.columns = ["(i)", "Operator", "Arg 1", "Arg 2"]
+                render_dataframe(df_triples)
+            else:
+                st.info("No triples generated.")
 
 def main():
     st.set_page_config(page_title="Smart Syntax & Grammar Debugger", layout="wide")
@@ -315,6 +358,7 @@ def main():
                 visualizer_modal()
             elif icg_clicked:
                 st.session_state.icg_step = 0
+                st.session_state.icg_slider_val = 0
                 icg_stepper_modal()
 
         # Handle Diagnostics & Errors
@@ -415,15 +459,12 @@ def main():
                     m3.metric("Labels", icg_res.get("label_count", 0))
                     m4.metric("Basic Blocks", len(icg_res.get("cfg", {}).get("blocks", {})))
 
-                    col_icg_btn1, col_icg_btn2 = st.columns([1, 1])
-                    with col_icg_btn1:
-                        if st.button("🔍 Step Through ICG Traversal", use_container_width=True, type="primary"):
-                            st.session_state.icg_step = 0
-                            icg_stepper_modal()
-                    with col_icg_btn2:
-                        st.caption("Tip: Run `run_visualizer.bat` for the dedicated full-screen Phase 4 Visualizer!")
+                    if st.button("Step Through ICG Traversal", use_container_width=True, type="primary"):
+                        st.session_state.icg_step = 0
+                        st.session_state.icg_slider_val = 0
+                        icg_stepper_modal()
 
-                    icg_sub1, icg_sub2, icg_sub3, icg_sub4 = st.tabs(["⚡ 3AC Code", "📋 Quadruples", "🔢 Triples", "🕸️ Control Flow Graph"])
+                    icg_sub1, icg_sub2, icg_sub3, icg_sub4 = st.tabs(["3AC Code", "Quadruples", "Triples", "Control Flow Graph"])
 
                     with icg_sub1:
                         tac_lines = icg_res.get("three_address_code", [])

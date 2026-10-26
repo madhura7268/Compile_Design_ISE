@@ -47,7 +47,7 @@ def generate_graphviz_cfg(cfg_data: Dict[str, Any]) -> graphviz.Digraph:
         header = f"=== {bid}{tag_str} ==="
         body_lines = []
         for idx, line in enumerate(code_lines):
-            leader_mark = "★ " if idx == 0 and bdata.get("leader_index") is not None else "  "
+            leader_mark = "* " if idx == 0 and bdata.get("leader_index") is not None else "  "
             body_lines.append(f"{leader_mark}{line}")
 
         body_text = "\n".join(body_lines) if body_lines else "  (empty block)"
