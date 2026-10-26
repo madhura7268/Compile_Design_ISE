@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase 4: Intermediate Code Generator (ICG) Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="brand-wrapper">
+                <div class="brand-icon">IR</div>
+                <div>
+                    <h1 class="brand-title">Intermediate Code Generator (ICG)</h1>
+                    <p class="brand-subtitle">Educational Compiler Pipeline &bull; Phase 4 &bull; 3AC &bull; Quadruples &bull; Triples &bull; CFG</p>
+                </div>
+            </div>
+            <div class="header-badges">
+                <span class="phase-badge">Phase 4 Visualizer</span>
+            </div>
+        </header>
+
+        <!-- Toolbar & Statistics -->
+        <section class="toolbar-section">
+            <div class="sample-controls">
+                <label for="sample-select">Load Test Case:</label>
+                <select id="sample-select" class="select-input">
+                    <option value="arithmetic">1. Arithmetic & Expression (a + b * 2)</option>
+                    <option value="if_else">2. If-Else Branching (if / else)</option>
+                    <option value="while_loop">3. While Loop (sum accumulation)</option>
+                    <option value="nested_logic">4. Nested Control Flow (while + if/else)</option>
+                    <option value="multi_expr">5. Multi-operator Expression</option>
+                </select>
+                <button id="btn-generate" class="btn btn-primary">Generate IR &amp; CFG</button>
+                <button id="btn-reset" class="btn btn-secondary">Reset</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-pill">
+                    <span class="stat-label">3AC Code:</span>
+                    <span id="stat-3ac" class="stat-val">0 lines</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label">Temporaries:</span>
+                    <span id="stat-temps" class="stat-val">0</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label">Labels:</span>
+                    <span id="stat-labels" class="stat-val">0</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label">Basic Blocks:</span>
+                    <span id="stat-blocks" class="stat-val">0</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Layout -->
+        <main class="main-layout">
+            <!-- Left Column: Source Editor & Stepper -->
+            <div class="left-column">
+                <!-- Editor Card -->
+                <div class="card editor-card">
+                    <div class="card-header">
+                        <h2 class="card-title">ToyLang Source Editor</h2>
+                    </div>
+                    <div class="editor-container">
+                        <textarea id="source-editor" class="code-textarea" spellcheck="false" placeholder="Write ToyLang statements here..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Stepper Card -->
+                <div class="card stepper-card">
+                    <div class="card-header">
+                        <h2 class="card-title">Execution Stepper</h2>
+                        <span id="step-display" class="stat-val">Step 0 / 0</span>
+                    </div>
+
+                    <div class="stepper-panel">
+                        <!-- Transport Buttons -->
+                        <div class="stepper-transport">
+                            <div class="transport-buttons">
+                                <button id="btn-first" class="btn-icon" title="First step">&vert;&lt;</button>
+                                <button id="btn-prev" class="btn-icon" title="Previous step">&lt;</button>
+                                <button id="btn-play" class="btn btn-play" title="Play / Pause">Play</button>
+                                <button id="btn-next" class="btn-icon" title="Next step">&gt;</button>
+                                <button id="btn-last" class="btn-icon" title="Last step">&gt;&vert;</button>
+                            </div>
+                            <div class="speed-control">
+                                <span>Speed:</span>
+                                <select id="speed-select" class="select-input">
+                                    <option value="0.5">0.5x</option>
+                                    <option value="1" selected>1.0x</option>
+                                    <option value="2">2.0x</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Progress Slider -->
+                        <div class="slider-wrapper">
+                            <input type="range" id="step-slider" class="step-slider" min="0" max="0" value="0">
+                        </div>
+
+                        <!-- Explanation Box -->
+                        <div id="step-action-text" class="step-explanation-box">
+                            Click 'Generate IR' or step through to begin execution.
+                        </div>
+
+                        <!-- Live Registers & Labels -->
+                        <div class="registers-section">
+                            <div class="reg-box">
+                                <span class="reg-label">Temp Allocator (t0, t1...)</span>
+                                <div id="temps-container" class="chips-container">
+                                    <span class="empty-state">None</span>
+                                </div>
+                            </div>
+                            <div class="reg-box">
+                                <span class="reg-label">Label Generator (L0, L1...)</span>
+                                <div id="labels-container" class="chips-container">
+                                    <span class="empty-state">None</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Tabbed Output Views -->
+            <div class="right-column card">
+                <nav class="tabs-header">
+                    <button class="tab-btn active" data-tab="3ac">Three-Address Code (3AC)</button>
+                    <button class="tab-btn" data-tab="quads">Quadruples Table</button>
+                    <button class="tab-btn" data-tab="triples">Triples Table</button>
+                    <button class="tab-btn" data-tab="cfg">Control Flow Graph (CFG)</button>
+                    <button class="tab-btn" data-tab="ast">AST Tree View</button>
+                </nav>
+
+                <!-- Tab Contents -->
+                <div class="tab-content-area">
+                    <!-- Tab 1: 3AC -->
+                    <div id="tab-3ac" class="tab-pane active">
+                        <div id="view-3ac"></div>
+                    </div>
+
+                    <!-- Tab 2: Quadruples -->
+                    <div id="tab-quads" class="tab-pane">
+                        <div id="view-quads"></div>
+                    </div>
+
+                    <!-- Tab 3: Triples -->
+                    <div id="tab-triples" class="tab-pane">
+                        <div id="view-triples"></div>
+                    </div>
+
+                    <!-- Tab 4: CFG -->
+                    <div id="tab-cfg" class="tab-pane">
+                        <div id="view-cfg"></div>
+                    </div>
+
+                    <!-- Tab 5: AST View -->
+                    <div id="tab-ast" class="tab-pane">
+                        <div id="view-ast"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Script (ES Module) -->
+    <script type="module" src="Visualizer.js?v=3"></script>
+</body>
+</html>

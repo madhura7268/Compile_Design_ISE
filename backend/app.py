@@ -9,6 +9,7 @@ import traceback
 from app.semantic.pipeline import compile_source
 from tree_viz import generate_graphviz_tree
 from ai_diagnostic import get_ai_diagnostic
+from cfg_viz import generate_graphviz_cfg
 
 def render_dataframe(df):
     try:
@@ -120,6 +121,168 @@ def visualizer_modal():
         else:
             st.info("Symbol table is empty at this step.")
 
+@st.dialog("Phase 4: Intermediate Code Generation Visualizer", width="large")
+def icg_stepper_modal():
+    res = st.session_state.get('parse_results', {})
+    icg_res = res.get("icg")
+    if not icg_res or not icg_res.get("success", False):
+        st.warning("Please click 'Compile' to generate intermediate code first.")
+        return
+
+    steps = icg_res.get("steps", [])
+    total_steps = len(steps)
+    if total_steps == 0:
+        st.info("No stepping steps available.")
+        return
+
+    if "icg_step" not in st.session_state:
+        st.session_state.icg_step = 0
+
+    # Ensure step is within valid range
+    if st.session_state.icg_step >= total_steps:
+        st.session_state.icg_step = total_steps - 1
+    if st.session_state.icg_step < 0:
+        st.session_state.icg_step = 0
+
+    # Controls Row
+    col_prev, col_status, col_next = st.columns([1, 2, 1])
+    with col_prev:
+        if st.button("Previous", disabled=(st.session_state.icg_step <= 0), use_container_width=True, key="icg_btn_prev"):
+            st.session_state.icg_step = max(0, st.session_state.icg_step - 1)
+            st.session_state.icg_slider_val = st.session_state.icg_step
+
+    with col_next:
+        if st.button("Next", disabled=(st.session_state.icg_step >= total_steps - 1), use_container_width=True, key="icg_btn_next"):
+            st.session_state.icg_step = min(total_steps - 1, st.session_state.icg_step + 1)
+            st.session_state.icg_slider_val = st.session_state.icg_step
+
+    if "icg_slider_val" not in st.session_state or st.session_state.icg_slider_val != st.session_state.icg_step:
+        st.session_state.icg_slider_val = st.session_state.icg_step
+
+    def on_slider_change():
+        st.session_state.icg_step = st.session_state.icg_slider_val
+
+    if total_steps > 1:
+        st.slider(
+            "Step Timeline Slider",
+            min_value=0,
+            max_value=total_steps - 1,
+            key="icg_slider_val",
+            on_change=on_slider_change,
+            label_visibility="collapsed"
+        )
+
+    curr_idx = st.session_state.icg_step
+    step_data = steps[curr_idx]
+
+    with col_status:
+        st.markdown(
+            f"<div style='text-align:center; font-weight:700; font-size:15px; padding-top:6px;'>"
+            f"Step {curr_idx + 1} of {total_steps}"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+    # Action callout
+    st.info(f"**AST Node: [{step_data['node_name']}]** &bull; {step_data['action']}")
+    st.divider()
+
+    col_left, col_right = st.columns([1, 1])
+
+    with col_left:
+        st.markdown("#### Live State Allocators")
+        m1, m2 = st.columns(2)
+        m1.metric("Temporaries", len(step_data.get("temps", [])))
+        m2.metric("Labels", len(step_data.get("labels", [])))
+
+        st.markdown("**Allocated Temporaries:**")
+        temps = step_data.get("temps", [])
+        if temps:
+            st.markdown(" ".join([f"`{t}`" for t in temps]))
+        else:
+            st.caption("None allocated yet.")
+
+        st.markdown("**Generated Labels:**")
+        labels = step_data.get("labels", [])
+        if labels:
+            st.markdown(" ".join([f"`{l}`" for l in labels]))
+        else:
+            st.caption("None generated yet.")
+
+        if step_data.get("quadruple"):
+            st.markdown("#### Latest Quadruple Emitted")
+            q = step_data["quadruple"]
+            df_q = pd.DataFrame([{
+                "op": q.get("op"),
+                "arg1": q.get("arg1") or "-",
+                "arg2": q.get("arg2") or "-",
+                "result": q.get("result") or "-"
+            }])
+            df_q.columns = ["Operator", "Arg 1", "Arg 2", "Result"]
+            render_dataframe(df_q)
+
+        if step_data.get("triple"):
+            st.markdown("#### Latest Triple Emitted")
+            t = step_data["triple"]
+            df_t = pd.DataFrame([{
+                "index": f"({t.get('index')})",
+                "op": t.get("op"),
+                "arg1": t.get("arg1") or "-",
+                "arg2": t.get("arg2") or "-"
+            }])
+            df_t.columns = ["(i)", "Operator", "Arg 1", "Arg 2"]
+            render_dataframe(df_t)
+
+    with col_right:
+        vtab1, vtab2, vtab3, vtab4 = st.tabs(["3AC Traversal", "Control Flow Graph", "Quadruples", "Triples"])
+
+        with vtab1:
+            st.markdown("#### Intermediate Code (3AC)")
+            insts = icg_res.get("instructions", [])
+            active_idx = step_data.get("instruction_index")
+
+            code_html = "<pre style='background-color: #1e1e2e; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto;'>"
+            for inst in insts:
+                idx = inst.get("index", 0)
+                code_text = inst.get("code", "")
+                leader = "[LEADER] " if inst.get("is_leader") else "         "
+                if active_idx is not None and idx == active_idx:
+                    code_html += f"<span style='background-color: rgba(99, 102, 241, 0.4); border-left: 3px solid #6366f1; display: block; color: #fff; padding-left: 6px;'>{idx:2d}: {leader}{code_text}  <- active</span>"
+                elif active_idx is not None and idx < active_idx:
+                    code_html += f"<span style='color: #cdd6f4; display: block; padding-left: 6px;'>{idx:2d}: {leader}{code_text}</span>"
+                else:
+                    code_html += f"<span style='color: #585b70; display: block; padding-left: 6px;'>{idx:2d}: {leader}{code_text}</span>"
+            code_html += "</pre>"
+            st.markdown(code_html, unsafe_allow_html=True)
+
+        with vtab2:
+            cfg_data = icg_res.get("cfg", {})
+            if cfg_data and cfg_data.get("blocks"):
+                st.markdown("#### Control Flow Graph")
+                st.caption("Emerald = True branch, Red = False branch, Purple = Goto, Cyan = Fall-through")
+                dot_cfg = generate_graphviz_cfg(cfg_data)
+                st.graphviz_chart(dot_cfg, use_container_width=True)
+            else:
+                st.info("No CFG data available.")
+
+        with vtab3:
+            quads = icg_res.get("quadruples", [])
+            if quads:
+                df_quads = pd.DataFrame(quads)[["index", "op", "arg1", "arg2", "result"]]
+                df_quads.columns = ["#", "Operator", "Arg 1", "Arg 2", "Result"]
+                render_dataframe(df_quads)
+            else:
+                st.info("No quadruples generated.")
+
+        with vtab4:
+            triples = icg_res.get("triples", [])
+            if triples:
+                df_triples = pd.DataFrame(triples)[["index", "op", "arg1", "arg2"]]
+                df_triples.columns = ["(i)", "Operator", "Arg 1", "Arg 2"]
+                render_dataframe(df_triples)
+            else:
+                st.info("No triples generated.")
+
 def main():
     st.set_page_config(page_title="Smart Syntax & Grammar Debugger", layout="wide")
     
@@ -172,12 +335,14 @@ def main():
         )
         st.session_state.code = code_input
 
-        col_btn1, col_btn2, col_btn3 = st.columns(3)
+        col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
         with col_btn1:
             compile_clicked = st.button("Compile", use_container_width=True, type="primary")
         with col_btn2:
-            visualize_clicked = st.button("Visualize Pipeline", use_container_width=True)
+            visualize_clicked = st.button("Pipeline Stepper", use_container_width=True)
         with col_btn3:
+            icg_clicked = st.button("Phase 4 Stepper", use_container_width=True)
+        with col_btn4:
             reset_clicked = st.button("Reset", use_container_width=True)
             
         if reset_clicked:
@@ -186,11 +351,15 @@ def main():
                 del st.session_state['parse_results']
             st.rerun()
 
-        if compile_clicked or visualize_clicked:
+        if compile_clicked or visualize_clicked or icg_clicked:
             st.session_state.parse_results = compile_source(st.session_state.code)
             if visualize_clicked:
                 st.session_state.visualizer_step = 0
                 visualizer_modal()
+            elif icg_clicked:
+                st.session_state.icg_step = 0
+                st.session_state.icg_slider_val = 0
+                icg_stepper_modal()
 
         # Handle Diagnostics & Errors
         if 'parse_results' in st.session_state:
@@ -251,7 +420,7 @@ def main():
 
     with col2:
         st.subheader("Analysis")
-        tab1, tab2, tab3 = st.tabs(["Parse Tree", "Token Stream", "Symbol Table"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Parse Tree", "Token Stream", "Symbol Table", "Intermediate Code (ICG)"])
         
         if 'parse_results' in st.session_state:
             res = st.session_state.parse_results
@@ -280,6 +449,74 @@ def main():
                     render_dataframe(df_symbols)
                 else:
                     st.info("Symbol table is empty.")
+
+            with tab4:
+                icg_res = res.get("icg")
+                if icg_res and icg_res.get("success", False):
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("3AC Instructions", len(icg_res.get("instructions", [])))
+                    m2.metric("Temporaries", icg_res.get("temp_count", 0))
+                    m3.metric("Labels", icg_res.get("label_count", 0))
+                    m4.metric("Basic Blocks", len(icg_res.get("cfg", {}).get("blocks", {})))
+
+                    if st.button("Step Through ICG Traversal", use_container_width=True, type="primary"):
+                        st.session_state.icg_step = 0
+                        st.session_state.icg_slider_val = 0
+                        icg_stepper_modal()
+
+                    icg_sub1, icg_sub2, icg_sub3, icg_sub4 = st.tabs(["3AC Code", "Quadruples", "Triples", "Control Flow Graph"])
+
+                    with icg_sub1:
+                        tac_lines = icg_res.get("three_address_code", [])
+                        tac_str = "\n".join(f"{i:2d}: {line}" for i, line in enumerate(tac_lines))
+                        st.code(tac_str, language="c")
+
+                    with icg_sub2:
+                        quads = icg_res.get("quadruples", [])
+                        if quads:
+                            df_quads = pd.DataFrame(quads)[["index", "op", "arg1", "arg2", "result"]]
+                            df_quads.columns = ["#", "Operator", "Arg 1", "Arg 2", "Result"]
+                            render_dataframe(df_quads)
+                        else:
+                            st.info("No quadruples generated.")
+
+                    with icg_sub3:
+                        triples = icg_res.get("triples", [])
+                        if triples:
+                            df_triples = pd.DataFrame(triples)[["index", "op", "arg1", "arg2"]]
+                            df_triples.columns = ["(i)", "Operator", "Arg 1", "Arg 2"]
+                            render_dataframe(df_triples)
+                        else:
+                            st.info("No triples generated.")
+
+                    with icg_sub4:
+                        cfg_data = icg_res.get("cfg", {})
+                        blocks = cfg_data.get("blocks", {})
+                        edges = cfg_data.get("edges", [])
+                        
+                        if cfg_data and blocks:
+                            st.markdown("##### Control Flow Graph")
+                            st.caption("Emerald = True branch, Red = False branch, Purple = Goto, Cyan = Fall-through")
+                            dot_cfg = generate_graphviz_cfg(cfg_data)
+                            st.graphviz_chart(dot_cfg, use_container_width=True)
+
+                        st.markdown(f"**Decomposed {len(blocks)} Basic Blocks:**")
+                        for bid, bdata in blocks.items():
+                            leader_idx = bdata.get("leader_index")
+                            leader_str = f" [Leader #{leader_idx}]" if leader_idx is not None else ""
+                            with st.expander(f"Basic Block {bid}{leader_str} (Predecessors: {bdata.get('predecessors', [])} | Successors: {bdata.get('successors', [])})", expanded=False):
+                                for code_line in bdata.get("code_lines", []):
+                                    st.code(code_line, language="c")
+
+                        if edges:
+                            with st.expander("Directed CFG Edges Table", expanded=False):
+                                df_edges = pd.DataFrame(edges)
+                                render_dataframe(df_edges)
+
+                elif icg_res and not icg_res.get("success", False):
+                    st.error(f"ICG Generation failed: {icg_res.get('error')}")
+                else:
+                    st.info("Intermediate code will be generated once syntax and semantic analysis succeed.")
         else:
             with tab1:
                 st.info("Click 'Compile & Parse' to generate the parse tree.")
@@ -287,6 +524,8 @@ def main():
                 st.info("Click 'Compile & Parse' to generate the token stream.")
             with tab3:
                 st.info("Click 'Compile & Parse' to generate the symbol table.")
+            with tab4:
+                st.info("Click 'Compile & Parse' to generate intermediate code.")
 
 if __name__ == "__main__":
     main()
