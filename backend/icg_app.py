@@ -174,6 +174,7 @@ def main():
     parse_res = results.get("parse", {})
     semantic_res = results.get("semantic")
     icg_res = results.get("icg")
+    asm_res = results.get("assembly")
 
     # Syntax / Semantic error handling
     if not parse_res.get("success", False):
@@ -290,13 +291,14 @@ def main():
     # -------------------------------------------------------------------------
     # Comprehensive IR & CFG Representations Tabs
     # -------------------------------------------------------------------------
-    tab_cfg, tab_3ac, tab_quads, tab_triples, tab_blocks, tab_ast = st.tabs([
+    tab_cfg, tab_3ac, tab_quads, tab_triples, tab_blocks, tab_ast, tab_asm = st.tabs([
         "Control Flow Graph (CFG)",
         "Three-Address Code (3AC)",
         "Quadruples Table",
         "Triples Table",
         "Basic Blocks Breakdown",
-        "Abstract Syntax Tree (AST)"
+        "Abstract Syntax Tree (AST)",
+        "🖥️ Assembly Code (ASM)"
     ])
 
     # -------------------------------------------------------------------------
@@ -429,6 +431,7 @@ def main():
                 else:
                     st.caption("(Empty Block)")
 
+
     # -------------------------------------------------------------------------
     # Tab 6: Abstract Syntax Tree (AST)
     # -------------------------------------------------------------------------
@@ -441,6 +444,69 @@ def main():
             st.graphviz_chart(dot_ast, use_container_width=True)
         else:
             st.info("No AST available.")
+
+    # -------------------------------------------------------------------------
+    # Tab 7: Assembly Code (Phase 5)
+    # -------------------------------------------------------------------------
+    with tab_asm:
+
+        st.markdown("#### Phase 5: x86-64 NASM Assembly Code Generation")
+        st.caption("Translated from the 3AC IR above using the System V AMD64 ABI (Linux).")
+
+        if asm_res is None:
+            st.info("Assembly not generated (earlier phase failed or was skipped).")
+        elif not asm_res.get("success", False):
+            st.error(f"Assembly generation error: {asm_res.get('error')}")
+            for w in asm_res.get("errors", []):
+                st.warning(w)
+        else:
+            asm_src = asm_res["assembly"]
+            n_lines = len(asm_src.splitlines())
+            n_vars  = asm_src.count("resq")
+
+            am1, am2, am3 = st.columns(3)
+            am1.metric("Target",    asm_res.get("target", "x86-64 NASM"))
+            am2.metric("ASM Lines", n_lines)
+            am3.metric("Variables", n_vars)
+
+            if asm_res.get("errors"):
+                with st.expander("Warnings", expanded=False):
+                    for w in asm_res["errors"]:
+                        st.warning(w)
+
+            st.code(asm_src, language="nasm")
+
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                st.download_button(
+                    label="⬇️ Download .asm file",
+                    data=asm_src.encode("utf-8"),
+                    file_name="output.asm",
+                    mime="text/plain",
+                    use_container_width=True,
+                )
+            with col_dl2:
+                raw_tac = "\n".join(
+                    f"{i:2d}: {inst.get('code')}" for i, inst in enumerate(instructions)
+                )
+                st.download_button(
+                    label="⬇️ Download 3AC (.txt)",
+                    data=raw_tac,
+                    file_name="intermediate_code_3ac.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                )
+
+            with st.expander("Build & Run Instructions", expanded=False):
+                st.markdown("""
+**Requirements:** NASM ≥ 2.14, GCC on Linux x86-64 (or WSL on Windows).
+
+```bash
+nasm -f elf64 output.asm -o output.o
+gcc -no-pie output.o -o output
+./output
+```
+                """)
 
 
 if __name__ == "__main__":

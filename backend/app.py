@@ -420,7 +420,7 @@ def main():
 
     with col2:
         st.subheader("Analysis")
-        tab1, tab2, tab3, tab4 = st.tabs(["Parse Tree", "Token Stream", "Symbol Table", "Intermediate Code (ICG)"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Parse Tree", "Token Stream", "Symbol Table", "Intermediate Code (ICG)", "Assembly Code (ASM)"])
         
         if 'parse_results' in st.session_state:
             res = st.session_state.parse_results
@@ -517,15 +517,84 @@ def main():
                     st.error(f"ICG Generation failed: {icg_res.get('error')}")
                 else:
                     st.info("Intermediate code will be generated once syntax and semantic analysis succeed.")
+
+            # ---------------------------------------------------------------
+            # Tab 5 - Assembly Code Generation (Phase 5)
+            # ---------------------------------------------------------------
+            with tab5:
+                asm_res = res.get("assembly")
+                if asm_res is None:
+                    st.info(
+                        "Assembly code is generated after successful syntax, "
+                        "semantic, and intermediate code generation phases. "
+                        "Please fix any earlier errors and compile again."
+                    )
+                elif not asm_res.get("success", False):
+                    st.error(f"Assembly generation failed: {asm_res.get('error')}")
+                    if asm_res.get("errors"):
+                        for warn in asm_res["errors"]:
+                            st.warning(warn)
+                else:
+                    # -- Metrics row --
+                    asm_src = asm_res["assembly"]
+                    n_lines = len(asm_src.splitlines())
+                    n_vars  = asm_src.count("resq")
+                    n_jmps  = sum(1 for l in asm_src.splitlines() if l.strip().startswith(("jmp", "je", "jne", "jl", "jle", "jg", "jge")))
+                    am1, am2, am3 = st.columns(3)
+                    am1.metric("Target",      asm_res.get("target", "x86-64 NASM"))
+                    am2.metric("ASM Lines",   n_lines)
+                    am3.metric("Variables",   n_vars)
+
+                    # -- Non-fatal warnings --
+                    if asm_res.get("errors"):
+                        with st.expander("Assembly Warnings", expanded=False):
+                            for warn in asm_res["errors"]:
+                                st.warning(warn)
+
+                    # -- Code display --
+                    st.markdown("#### Generated x86-64 NASM Assembly")
+                    st.code(asm_src, language="nasm")
+
+                    # -- Download button --
+                    st.download_button(
+                        label="⬇️ Download .asm file",
+                        data=asm_src.encode("utf-8"),
+                        file_name="output.asm",
+                        mime="text/plain",
+                        use_container_width=True,
+                    )
+
+                    # -- Build instructions --
+                    with st.expander("How to assemble and run", expanded=False):
+                        st.markdown("""
+**Requirements:** NASM ≥ 2.14, GCC (or ld) for linking against glibc.
+
+```bash
+# 1. Assemble
+nasm -f elf64 output.asm -o output.o
+
+# 2. Link (using GCC for automatic glibc linkage)
+gcc -no-pie output.o -o output
+
+# 3. Run
+./output
+```
+
+> **Note:** The generated code uses C `printf` for print statements and
+> `exit()` for program termination — standard glibc functions.
+> Tested on Linux x86-64.  On Windows, use WSL or an x86-64 Linux VM.
+                        """)
         else:
             with tab1:
-                st.info("Click 'Compile & Parse' to generate the parse tree.")
+                st.info("Click 'Compile' to generate the parse tree.")
             with tab2:
-                st.info("Click 'Compile & Parse' to generate the token stream.")
+                st.info("Click 'Compile' to generate the token stream.")
             with tab3:
-                st.info("Click 'Compile & Parse' to generate the symbol table.")
+                st.info("Click 'Compile' to generate the symbol table.")
             with tab4:
-                st.info("Click 'Compile & Parse' to generate intermediate code.")
+                st.info("Click 'Compile' to generate intermediate code.")
+            with tab5:
+                st.info("Click 'Compile' to generate assembly code.")
 
 if __name__ == "__main__":
     main()
