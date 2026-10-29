@@ -453,15 +453,16 @@ def p_error(p):
     global _last_parser_error
 
     if p is None:
-        _last_parser_error = {
-            "error_type": "SyntaxError",
-            "line": None,
-            "column": None,
-            "unexpected_token": "EOF",
-            "expected": [],
-            "message": "Unexpected end of input.",
-            "parser_stack": [],
-        }
+        if _last_parser_error is None:
+            _last_parser_error = {
+                "error_type": "SyntaxError",
+                "line": None,
+                "column": None,
+                "unexpected_token": "EOF",
+                "expected": [],
+                "message": "Unexpected end of input.",
+                "parser_stack": [],
+            }
         return
 
     parser = getattr(p, "parser", None)
@@ -499,19 +500,20 @@ def p_error(p):
     # rather than guessing.
     # --------------------------------------------------------
 
-    _last_parser_error = {
-        "error_type": "SyntaxError",
-        "line": line,
-        "column": column,
-        "unexpected_token": p.value,
-        "token_type": p.type,
-        "expected": [],
-        "message": (
-            f"Unexpected token '{p.value}' "
-            f"of type {p.type}."
-        ),
-        "parser_stack": parser_stack,
-    }
+    if _last_parser_error is None:
+        _last_parser_error = {
+            "error_type": "SyntaxError",
+            "line": line,
+            "column": column,
+            "unexpected_token": p.value,
+            "token_type": p.type,
+            "expected": [],
+            "message": (
+                f"Unexpected token '{p.value}' "
+                f"of type {p.type}."
+            ),
+            "parser_stack": parser_stack,
+        }
 
     # Recover by discarding the offending token.
     if parser is not None:
