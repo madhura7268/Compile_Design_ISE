@@ -8,7 +8,13 @@ import traceback
 # Adjust imports based on the backend folder structure
 from app.semantic.pipeline import compile_source
 from tree_viz import generate_graphviz_tree
+import importlib
+import ai_diagnostic
+import rag_engine
+importlib.reload(ai_diagnostic)
+importlib.reload(rag_engine)
 from ai_diagnostic import get_ai_diagnostic
+from rag_engine import get_rag_engine
 from cfg_viz import generate_graphviz_cfg
 
 def render_dataframe(df):
@@ -55,6 +61,8 @@ def set_sample(sample_name):
 def apply_fix(corrected_code):
     st.session_state.code = corrected_code
     st.session_state.parse_results = compile_source(corrected_code)
+    st.session_state.pop("cached_diagnostic", None)
+    st.session_state.pop("cached_sem_diagnostic", None)
 
 @st.dialog("Compiler Line-by-Line Visualizer", width="large")
 def visualizer_modal():
@@ -283,6 +291,73 @@ def icg_stepper_modal():
             else:
                 st.info("No triples generated.")
 
+def render_tutor_ui(res=None):
+    st.markdown("### 🤖 ToyLang AI Compiler Tutor")
+    st.caption("Ask questions about your code, compiler phases (Lexer, Parser, Semantic, ICG, Assembly), or optimization theory.")
+    
+    # Header with clear button
+    th_col1, th_col2 = st.columns([4, 1])
+    with th_col1:
+        st.markdown("**Quick Topics:**")
+    with th_col2:
+        if st.button("Clear Chat", key="btn_clear_tutor", use_container_width=True):
+            st.session_state.tutor_history = []
+            st.rerun()
+
+    qcol1, qcol2, qcol3, qcol4 = st.columns(4)
+    clicked_query = None
+    if qcol1.button("Assembly Translation", key="btn_explain_asm", use_container_width=True):
+        clicked_query = "Explain how the intermediate code translates into x86-64 NASM assembly instructions, including register usage and glibc calls."
+    if qcol2.button("3AC & Quadruples", key="btn_explain_icg", use_container_width=True):
+        clicked_query = "Explain the 3-address code quadruples and temporary variables generated for this program."
+    if qcol3.button("Scoping & Symbols", key="btn_explain_scope", use_container_width=True):
+        clicked_query = "How does ToyLang handle lexical scoping and symbol table lookup for the variables in this program?"
+    if qcol4.button("ToyLang CFG Rules", key="btn_check_cfg", use_container_width=True):
+        clicked_query = "What formal CFG grammar productions in ToyLang are used to parse this program?"
+
+    if "tutor_history" not in st.session_state:
+        st.session_state.tutor_history = []
+
+    with st.form(key="tutor_form", clear_on_submit=True):
+        user_input = st.text_input("Ask a question about this code or compiler theory:", placeholder="e.g. Why did the compiler emit 'cqo' before 'idiv'?")
+        submit_btn = st.form_submit_button("Ask Tutor", type="primary")
+
+    query_to_run = clicked_query or (user_input if submit_btn and user_input.strip() else None)
+
+    if query_to_run:
+        curr_res = res or (st.session_state.get('parse_results') or {})
+        compiler_ctx = {
+            "source_code": st.session_state.get("code", ""),
+            "parse_tree": (curr_res.get("parse") or {}).get("parse_tree") if curr_res else None,
+            "parse_error": (curr_res.get("parse") or {}).get("error") if curr_res else None,
+            "symbols": (curr_res.get("lex") or {}).get("symbol_table", []) if curr_res else [],
+            "ir_code": "\n".join((curr_res.get("icg") or {}).get("three_address_code") or []) if curr_res else "",
+            "asm_code": (curr_res.get("assembly") or {}).get("assembly", "") if curr_res else ""
+        }
+        with st.spinner("Retrieving ToyLang specifications and generating grounded answer..."):
+            rag = get_rag_engine()
+            tutor_res = rag.ask_tutor(query_to_run, compiler_ctx)
+            st.session_state.tutor_history.insert(0, {
+                "query": query_to_run,
+                "answer": tutor_res["answer"],
+                "rules": tutor_res["retrieved_chunks"],
+                "model": tutor_res.get("model_used", "Groq")
+            })
+
+    if st.session_state.tutor_history:
+        for idx, item in enumerate(st.session_state.tutor_history):
+            with st.chat_message("user"):
+                st.write(item["query"])
+            with st.chat_message("assistant"):
+                st.markdown(item["answer"])
+                if item.get("rules"):
+                    with st.expander(f"📚 Retrieved Knowledge Chunks ({item.get('model', 'RAG')})", expanded=False):
+                        for r in item["rules"]:
+                            st.markdown(f"**{r.get('title')}** `({r.get('document')})` - *Relevance Score: {r.get('score')}*")
+                            st.caption(r.get("content"))
+    else:
+        st.info("Ask any question above or click one of the quick topics to explore compiler concepts grounded in ToyLang specifications!")
+
 def main():
     st.set_page_config(page_title="Smart Syntax & Grammar Debugger", layout="wide")
     
@@ -347,12 +422,15 @@ def main():
             
         if reset_clicked:
             set_sample(st.session_state.selected_sample)
-            if 'parse_results' in st.session_state:
-                del st.session_state['parse_results']
+            st.session_state.pop('parse_results', None)
+            st.session_state.pop('cached_diagnostic', None)
+            st.session_state.pop('cached_sem_diagnostic', None)
             st.rerun()
 
         if compile_clicked or visualize_clicked or icg_clicked:
             st.session_state.parse_results = compile_source(st.session_state.code)
+            st.session_state.pop('cached_diagnostic', None)
+            st.session_state.pop('cached_sem_diagnostic', None)
             if visualize_clicked:
                 st.session_state.visualizer_step = 0
                 visualizer_modal()
@@ -370,17 +448,22 @@ def main():
                 err = parse_res["error"]
                 line_no = err.get("line") or len(st.session_state.code.splitlines())
                 
-                # Fetch AI diagnostics
-                with st.spinner("Analyzing error with AI..."):
-                    diagnostic = get_ai_diagnostic(
-                        code=st.session_state.code,
-                        error_msg=err.get("message", "Unknown syntax error"),
-                        line=line_no
-                    )
+                # Fetch AI diagnostics (cached per compilation to prevent rerun loops)
+                if "cached_diagnostic" not in st.session_state:
+                    with st.spinner("Analyzing error with RAG AI..."):
+                        diagnostic = get_ai_diagnostic(
+                            code=st.session_state.code,
+                            error_msg=err.get("message", "Unknown syntax error"),
+                            line=line_no,
+                            phase="lexical" if err.get("error_type") == "LexicalError" else "syntax"
+                        )
+                        st.session_state.cached_diagnostic = diagnostic
+                else:
+                    diagnostic = st.session_state.cached_diagnostic
                 
                 st.error(f"**{err.get('error_type', 'Error')} detected at Line {line_no}:** {err.get('message', '')}")
                 
-                with st.expander("AI Diagnostic Details", expanded=True):
+                with st.expander("AI Diagnostic Details (RAG Grounded)", expanded=True):
                     st.markdown(f"**Explanation:** {diagnostic.get('explanation')}")
                     st.markdown(f"**Suggested Fix:** {diagnostic.get('suggested_fix')}")
                     
@@ -399,11 +482,33 @@ def main():
                             st.markdown("**Diff:**")
                             st.code(diff_str, language="diff")
                             
-                        st.button("Apply AI Auto-Fix", on_click=apply_fix, args=(corrected,), type="primary")
+                        st.button("Apply AI Auto-Fix", on_click=apply_fix, args=(corrected,), type="primary", key="apply_syntax_fix")
+
+                    rules = diagnostic.get("retrieved_rules", [])
+                    if rules:
+                        with st.expander("📚 Retrieved ToyLang Specification Rules (RAG)", expanded=False):
+                            for r in rules:
+                                st.markdown(f"**{r.get('title')}** `({r.get('document')})`")
+                                st.caption(r.get("content"))
             elif parse_res.get("success", False):
                 semantic_result = res.get("semantic")
                 if semantic_result is not None and not semantic_result["success"]:
                     st.error("Semantic analysis failed.")
+                    first_err = semantic_result["errors"][0] if semantic_result.get("errors") else {"message": "Semantic error", "line": 1}
+                    sem_line_no = first_err.get("line") or 1
+                    
+                    if "cached_sem_diagnostic" not in st.session_state:
+                        with st.spinner("Analyzing semantic error with RAG AI..."):
+                            sem_diag = get_ai_diagnostic(
+                                code=st.session_state.code,
+                                error_msg=first_err.get("message", "Semantic error"),
+                                line=sem_line_no,
+                                phase="semantic"
+                            )
+                            st.session_state.cached_sem_diagnostic = sem_diag
+                    else:
+                        sem_diag = st.session_state.cached_sem_diagnostic
+                    
                     for err in semantic_result["errors"]:
                         location = (
                             f" at line {err['line']}"
@@ -413,6 +518,32 @@ def main():
                         st.error(
                             f"{err['code']}{location}: {err['message']}"
                         )
+
+                    with st.expander("AI Semantic Diagnostic Details (RAG Grounded)", expanded=True):
+                        st.markdown(f"**Explanation:** {sem_diag.get('explanation')}")
+                        st.markdown(f"**Suggested Fix:** {sem_diag.get('suggested_fix')}")
+                        
+                        sem_corrected = sem_diag.get("corrected_code", st.session_state.code)
+                        if sem_corrected and sem_corrected.strip() != st.session_state.code.strip():
+                            diff = difflib.unified_diff(
+                                st.session_state.code.splitlines(),
+                                sem_corrected.splitlines(),
+                                fromfile="Current Code",
+                                tofile="Corrected Code",
+                                lineterm=""
+                            )
+                            diff_str = "\n".join(diff)
+                            if diff_str:
+                                st.markdown("**Diff:**")
+                                st.code(diff_str, language="diff")
+                            st.button("Apply AI Semantic Fix", on_click=apply_fix, args=(sem_corrected,), type="primary", key="apply_sem_fix")
+
+                        sem_rules = sem_diag.get("retrieved_rules", [])
+                        if sem_rules:
+                            with st.expander("📚 Retrieved ToyLang Semantic Rules (RAG)", expanded=False):
+                                for r in sem_rules:
+                                    st.markdown(f"**{r.get('title')}** `({r.get('document')})`")
+                                    st.caption(r.get("content"))
                 else:
                     st.success(
                         "Compilation successful! Parse tree generated."
@@ -420,7 +551,7 @@ def main():
 
     with col2:
         st.subheader("Analysis")
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Parse Tree", "Token Stream", "Symbol Table", "Intermediate Code (ICG)", "Assembly Code (ASM)"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Parse Tree", "Token Stream", "Symbol Table", "Intermediate Code (ICG)", "Assembly Code (ASM)", "🤖 AI Compiler Tutor"])
         
         if 'parse_results' in st.session_state:
             res = st.session_state.parse_results
@@ -457,7 +588,9 @@ def main():
                     m1.metric("3AC Instructions", len(icg_res.get("instructions", [])))
                     m2.metric("Temporaries", icg_res.get("temp_count", 0))
                     m3.metric("Labels", icg_res.get("label_count", 0))
-                    m4.metric("Basic Blocks", len(icg_res.get("cfg", {}).get("blocks", {})))
+                    cfg_data = icg_res.get("cfg") or {}
+                    blocks = cfg_data.get("blocks", {})
+                    m4.metric("Basic Blocks", len(blocks))
 
                     if st.button("Step Through ICG Traversal", use_container_width=True, type="primary"):
                         st.session_state.icg_step = 0
@@ -490,8 +623,6 @@ def main():
                             st.info("No triples generated.")
 
                     with icg_sub4:
-                        cfg_data = icg_res.get("cfg", {})
-                        blocks = cfg_data.get("blocks", {})
                         edges = cfg_data.get("edges", [])
                         
                         if cfg_data and blocks:
@@ -584,6 +715,12 @@ gcc -no-pie output.o -o output
 > `exit()` for program termination — standard glibc functions.
 > Tested on Linux x86-64.  On Windows, use WSL or an x86-64 Linux VM.
                         """)
+
+            # ---------------------------------------------------------------
+            # Tab 6 - AI Compiler Tutor (RAG Grounded)
+            # ---------------------------------------------------------------
+            with tab6:
+                render_tutor_ui(res)
         else:
             with tab1:
                 st.info("Click 'Compile' to generate the parse tree.")
@@ -595,6 +732,8 @@ gcc -no-pie output.o -o output
                 st.info("Click 'Compile' to generate intermediate code.")
             with tab5:
                 st.info("Click 'Compile' to generate assembly code.")
+            with tab6:
+                render_tutor_ui(None)
 
 if __name__ == "__main__":
     main()
